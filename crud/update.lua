@@ -2,7 +2,6 @@ local checks = require('checks')
 local errors = require('errors')
 
 local call = require('crud.common.call')
-local compat_warn = require('crud.common.compat_warn')
 local const = require('crud.common.const')
 local utils = require('crud.common.utils')
 local sharding = require('crud.common.sharding')
@@ -46,15 +45,9 @@ local function update_on_storage(space_name, key, operations, field_names, opts)
         return nil, err
     end
 
-    -- Skip bucket reference if bucket_id is not provided to support old routers.
-    local ref_ok, bucket_ref_err, unref
-    if opts.bucket_id ~= nil then
-        ref_ok, bucket_ref_err, unref = bucket_ref_unref.bucket_refrw(opts.bucket_id, space.engine)
-        if not ref_ok then
-            return nil, bucket_ref_err
-        end
-    else
-        compat_warn.log_nil_bucket_id('update', space_name, space.engine)
+    local ref_ok, bucket_ref_err, unref = bucket_ref_unref.bucket_refrw(opts.bucket_id, space.engine)
+    if not ref_ok then
+        return nil, bucket_ref_err
     end
 
     -- add_space_schema_hash is false because
@@ -81,11 +74,9 @@ local function update_on_storage(space_name, key, operations, field_names, opts)
         }, space, key, operations)
     end
 
-    if unref ~= nil then
-        local unref_ok, err_unref = unref(opts.bucket_id, space.engine)
-        if not unref_ok then
-            return nil, err_unref
-        end
+    local unref_ok, err_unref = unref(opts.bucket_id, space.engine)
+    if not unref_ok then
+        return nil, err_unref
     end
 
     return res, err

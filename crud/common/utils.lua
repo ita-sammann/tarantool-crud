@@ -34,8 +34,11 @@ utils.STORAGE_NAMESPACE = '_crud'
 --  @param string name a base name of the storage function.
 --
 --  @return a full string for the call.
-function utils.get_storage_call(name)
-    dev_checks('string')
+function utils.get_storage_call(name, version)
+    dev_checks('string', '?number')
+    if version ~= nil then
+        return ('%s.%s_v%d'):format(utils.STORAGE_NAMESPACE, name, version)
+    end
 
     return ('%s.%s'):format(utils.STORAGE_NAMESPACE, name)
 end
