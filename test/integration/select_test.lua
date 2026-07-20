@@ -2091,8 +2091,8 @@ pgroup.before_test('test_storage_uninit_get_error_text', function(g)
     helpers.call_on_storages(g.cluster, function(server)
         server.net_box:eval([[
             local _crud = rawget(_G, '_crud')
-            rawset(_G, '_real_crud_get', _crud.get_on_storage)
-            _crud.get_on_storage = nil
+            rawset(_G, '_real_crud_get', _crud.get_on_storage_v2)
+            _crud.get_on_storage_v2 = nil
         ]])
     end)
 end)
@@ -2101,7 +2101,7 @@ pgroup.after_test('test_storage_uninit_get_error_text', function(g)
     helpers.call_on_storages(g.cluster, function(server)
         server.net_box:eval([[
             local _crud = rawget(_G, '_crud')
-            _crud.get_on_storage = rawget(_G, '_real_crud_get')
+            _crud.get_on_storage_v2 = rawget(_G, '_real_crud_get')
             rawset(_G, '_real_crud_get', nil)
         ]])
     end)
@@ -2112,7 +2112,7 @@ pgroup.test_storage_uninit_get_error_text = function(g)
     t.assert_equals(obj, nil)
     t.assert_str_contains(err.str, 'GetError')
     t.assert_str_contains(err.str, 'NotInitialized')
-    t.assert_str_contains(err.str, "Function '_crud.get_on_storage' is not registered")
+    t.assert_str_contains(err.str, "Function '_crud.get_on_storage_v2' is not registered")
     t.assert_str_contains(err.str, "crud isn't initialized on replicaset")
     t.assert_str_contains(err.str, "or crud module versions mismatch between router and storage")
 end

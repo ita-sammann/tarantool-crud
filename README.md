@@ -158,7 +158,8 @@ router and storage instances.
 >
 > **Rolling Upgrade from < 1.7.0 to > 1.7.5**
 >
-> TODO
+> Old routers (< 1.7.0) use legacy storage API and safe mode on storages will not function
+> when processing requests from such routers regardless of whether safe mode is enabled or disabled.
 
 ### Sandbox
 

@@ -15,10 +15,11 @@ local GetError = errors.new_class('GetError', {capture_stack = false})
 
 local get = {}
 
-local GET_FUNC_NAME = 'get_on_storage'
+local GET_FUNC_NAME = 'get_on_storage_v2'
+local GET_LEGACY_FUNC_NAME = 'get_on_storage'
 local CRUD_GET_FUNC_NAME = utils.get_storage_call(GET_FUNC_NAME)
 
-local function get_on_storage(space_name, key, field_names, opts)
+local function get_on_storage_v2(space_name, key, field_names, opts)
     dev_checks('string', '?', '?table', {
         bucket_id = 'number|cdata',
         sharding_key_hash = '?number',
@@ -64,7 +65,43 @@ local function get_on_storage(space_name, key, field_names, opts)
     return result
 end
 
-get.storage_api = {[GET_FUNC_NAME] = get_on_storage}
+local function get_on_storage(space_name, key, field_names, opts)
+    dev_checks('string', '?', '?table', {
+        sharding_key_hash = '?number',
+        sharding_func_hash = '?number',
+        skip_sharding_hash_check = '?boolean',
+        fetch_latest_metadata = '?boolean',
+    })
+
+    opts = opts or {}
+
+    local space = box.space[space_name]
+    if space == nil then
+        return nil, GetError:new("Space %q doesn't exist", space_name)
+    end
+
+    local _, err = sharding.check_sharding_hash(space_name,
+                                                opts.sharding_func_hash,
+                                                opts.sharding_key_hash,
+                                                opts.skip_sharding_hash_check)
+
+    if err ~= nil then
+        return nil, err
+    end
+
+    -- add_space_schema_hash is false because
+    -- reloading space format on router can't avoid get error on storage
+    return schema.wrap_func_result(space, space.get, {
+        add_space_schema_hash = false,
+        field_names = field_names,
+        fetch_latest_metadata = opts.fetch_latest_metadata,
+    }, space, key)
+end
+
+get.storage_api = {
+    [GET_FUNC_NAME] = get_on_storage_v2,
+    [GET_LEGACY_FUNC_NAME] = get_on_storage,
+}
 
 -- returns result, err, need_reload
 -- need_reload indicates if reloading schema could help

@@ -15,13 +15,13 @@ local UpdateError = errors.new_class('UpdateError', {capture_stack = false})
 
 local update = {}
 
-local UPDATE_FUNC_NAME = 'update_on_storage'
+local UPDATE_FUNC_NAME = 'update_on_storage_v2'
+local UPDATE_LEGACY_FUNC_NAME = 'update_on_storage'
 local CRUD_UPDATE_FUNC_NAME = utils.get_storage_call(UPDATE_FUNC_NAME)
 
-local function update_on_storage(space_name, key, operations, field_names, opts)
+local function update_on_storage_v2(space_name, key, operations, field_names, opts)
     dev_checks('string', '?', 'table', '?table', {
-        -- bucket_id is optional to support old routers.
-        bucket_id = '?number|cdata',
+        bucket_id = 'number|cdata',
         sharding_key_hash = '?number',
         sharding_func_hash = '?number',
         skip_sharding_hash_check = '?boolean',
@@ -82,7 +82,62 @@ local function update_on_storage(space_name, key, operations, field_names, opts)
     return res, err
 end
 
-update.storage_api = {[UPDATE_FUNC_NAME] = update_on_storage}
+local function update_on_storage(space_name, key, operations, field_names, opts)
+    dev_checks('string', '?', 'table', '?table', {
+        sharding_key_hash = '?number',
+        sharding_func_hash = '?number',
+        skip_sharding_hash_check = '?boolean',
+        noreturn = '?boolean',
+        fetch_latest_metadata = '?boolean',
+    })
+
+    opts = opts or {}
+
+    local space = box.space[space_name]
+    if space == nil then
+        return nil, UpdateError:new("Space %q doesn't exist", space_name)
+    end
+
+    local _, err = sharding.check_sharding_hash(space_name,
+            opts.sharding_func_hash,
+            opts.sharding_key_hash,
+            opts.skip_sharding_hash_check)
+
+    if err ~= nil then
+        return nil, err
+    end
+
+    -- add_space_schema_hash is false because
+    -- reloading space format on router can't avoid update error on storage
+    local res, err = schema.wrap_func_result(space, space.update, {
+        add_space_schema_hash = false,
+        field_names = field_names,
+        noreturn = opts.noreturn,
+        fetch_latest_metadata = opts.fetch_latest_metadata,
+    }, space, key, operations)
+
+    if err == nil and res.err ~= nil and utils.is_field_not_found(res.err.code) then
+        -- Relevant for Tarantool older than 2.8.1.
+        -- We can only add fields to end of the tuple.
+        -- If schema is updated and nullable fields are added, then we will get error.
+        -- Therefore, we need to add filling of intermediate nullable fields.
+        -- More details: https://github.com/tarantool/tarantool/issues/3378
+        operations = utils.add_intermediate_nullable_fields(operations, space:format(), space:get(key))
+        res, err = schema.wrap_func_result(space, space.update, {
+            add_space_schema_hash = false,
+            field_names = field_names,
+            noreturn = opts.noreturn,
+            fetch_latest_metadata = opts.fetch_latest_metadata,
+        }, space, key, operations)
+    end
+
+    return res, err
+end
+
+update.storage_api = {
+    [UPDATE_FUNC_NAME] = update_on_storage_v2,
+    [UPDATE_LEGACY_FUNC_NAME] = update_on_storage,
+}
 
 -- returns result, err, need_reload
 -- need_reload indicates if reloading schema could help

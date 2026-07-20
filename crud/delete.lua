@@ -15,10 +15,11 @@ local DeleteError = errors.new_class('DeleteError', {capture_stack = false})
 
 local delete = {}
 
-local DELETE_FUNC_NAME = 'delete_on_storage'
+local DELETE_FUNC_NAME = 'delete_on_storage_v2'
+local DELETE_LEGACY_FUNC_NAME = 'delete_on_storage'
 local CRUD_DELETE_FUNC_NAME = utils.get_storage_call(DELETE_FUNC_NAME)
 
-local function delete_on_storage(space_name, key, field_names, opts)
+local function delete_on_storage_v2(space_name, key, field_names, opts)
     dev_checks('string', '?', '?table', {
         bucket_id = 'number|cdata',
         sharding_key_hash = '?number',
@@ -66,7 +67,45 @@ local function delete_on_storage(space_name, key, field_names, opts)
     return result
 end
 
-delete.storage_api = {[DELETE_FUNC_NAME] = delete_on_storage}
+local function delete_on_storage(space_name, key, field_names, opts)
+    dev_checks('string', '?', '?table', {
+        sharding_key_hash = '?number',
+        sharding_func_hash = '?number',
+        skip_sharding_hash_check = '?boolean',
+        noreturn = '?boolean',
+        fetch_latest_metadata = '?boolean',
+    })
+
+    opts = opts or {}
+
+    local space = box.space[space_name]
+    if space == nil then
+        return nil, DeleteError:new("Space %q doesn't exist", space_name)
+    end
+
+    local _, err = sharding.check_sharding_hash(space_name,
+                                                opts.sharding_func_hash,
+                                                opts.sharding_key_hash,
+                                                opts.skip_sharding_hash_check)
+
+    if err ~= nil then
+        return nil, err
+    end
+
+    -- add_space_schema_hash is false because
+    -- reloading space format on router can't avoid delete error on storage
+    return schema.wrap_func_result(space, space.delete, {
+        add_space_schema_hash = false,
+        field_names = field_names,
+        noreturn = opts.noreturn,
+        fetch_latest_metadata = opts.fetch_latest_metadata,
+    }, space, key)
+end
+
+delete.storage_api = {
+    [DELETE_FUNC_NAME] = delete_on_storage_v2,
+    [DELETE_LEGACY_FUNC_NAME] = delete_on_storage,
+}
 
 -- returns result, err, need_reload
 -- need_reload indicates if reloading schema could help

@@ -13,10 +13,11 @@ local ReplaceError = errors.new_class('ReplaceError', { capture_stack = false })
 
 local replace = {}
 
-local REPLACE_FUNC_NAME = 'replace_on_storage'
+local REPLACE_FUNC_NAME = 'replace_on_storage_v2'
+local REPLACE_LEGACY_FUNC_NAME = 'replace_on_storage'
 local CRUD_REPLACE_FUNC_NAME = utils.get_storage_call(REPLACE_FUNC_NAME)
 
-local function replace_on_storage(space_name, tuple, opts)
+local function replace_on_storage_v2(space_name, tuple, opts)
     dev_checks('string', 'table', {
         add_space_schema_hash = '?boolean',
         fields = '?table',
@@ -67,7 +68,48 @@ local function replace_on_storage(space_name, tuple, opts)
     return result
 end
 
-replace.storage_api = {[REPLACE_FUNC_NAME] = replace_on_storage}
+local function replace_on_storage(space_name, tuple, opts)
+    dev_checks('string', 'table', {
+        add_space_schema_hash = '?boolean',
+        fields = '?table',
+        sharding_key_hash = '?number',
+        sharding_func_hash = '?number',
+        skip_sharding_hash_check = '?boolean',
+        noreturn = '?boolean',
+        fetch_latest_metadata = '?boolean',
+    })
+
+    opts = opts or {}
+
+    local space = box.space[space_name]
+    if space == nil then
+        return nil, ReplaceError:new("Space %q doesn't exist", space_name)
+    end
+
+    local _, err = sharding.check_sharding_hash(space_name,
+                                                opts.sharding_func_hash,
+                                                opts.sharding_key_hash,
+                                                opts.skip_sharding_hash_check)
+
+    if err ~= nil then
+        return nil, err
+    end
+
+    -- add_space_schema_hash is true only in case of replace_object
+    -- the only one case when reloading schema can avoid insert error
+    -- is flattening object on router
+    return schema.wrap_func_result(space, space.replace, {
+        add_space_schema_hash = opts.add_space_schema_hash,
+        field_names = opts.fields,
+        noreturn = opts.noreturn,
+        fetch_latest_metadata = opts.fetch_latest_metadata,
+    }, space, tuple)
+end
+
+replace.storage_api = {
+    [REPLACE_FUNC_NAME] = replace_on_storage_v2,
+    [REPLACE_LEGACY_FUNC_NAME] = replace_on_storage,
+}
 
 -- returns result, err, need_reload
 -- need_reload indicates if reloading schema could help

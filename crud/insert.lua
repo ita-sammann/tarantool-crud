@@ -13,10 +13,11 @@ local InsertError = errors.new_class('InsertError', {capture_stack = false})
 
 local insert = {}
 
-local INSERT_FUNC_NAME = 'insert_on_storage'
+local INSERT_FUNC_NAME = 'insert_on_storage_v2'
+local INSERT_LEGACY_FUNC_NAME = 'insert_on_storage'
 local CRUD_INSERT_FUNC_NAME = utils.get_storage_call(INSERT_FUNC_NAME)
 
-local function insert_on_storage(space_name, tuple, opts)
+local function insert_on_storage_v2(space_name, tuple, opts)
     dev_checks('string', 'table', {
         add_space_schema_hash = '?boolean',
         fields = '?table',
@@ -68,7 +69,48 @@ local function insert_on_storage(space_name, tuple, opts)
     return result
 end
 
-insert.storage_api = {[INSERT_FUNC_NAME] = insert_on_storage}
+local function insert_on_storage(space_name, tuple, opts)
+    dev_checks('string', 'table', {
+        add_space_schema_hash = '?boolean',
+        fields = '?table',
+        sharding_key_hash = '?number',
+        sharding_func_hash = '?number',
+        skip_sharding_hash_check = '?boolean',
+        noreturn = '?boolean',
+        fetch_latest_metadata = '?boolean',
+    })
+
+    opts = opts or {}
+
+    local space = box.space[space_name]
+    if space == nil then
+        return nil, InsertError:new("Space %q doesn't exist", space_name)
+    end
+
+    local _, err = sharding.check_sharding_hash(space_name,
+                                                opts.sharding_func_hash,
+                                                opts.sharding_key_hash,
+                                                opts.skip_sharding_hash_check)
+
+    if err ~= nil then
+        return nil, err
+    end
+
+    -- add_space_schema_hash is true only in case of insert_object
+    -- the only one case when reloading schema can avoid insert error
+    -- is flattening object on router
+    return schema.wrap_func_result(space, space.insert, {
+        add_space_schema_hash = opts.add_space_schema_hash,
+        field_names = opts.fields,
+        noreturn = opts.noreturn,
+        fetch_latest_metadata = opts.fetch_latest_metadata,
+    }, space, tuple)
+end
+
+insert.storage_api = {
+    [INSERT_FUNC_NAME] = insert_on_storage_v2,
+    [INSERT_LEGACY_FUNC_NAME] = insert_on_storage,
+}
 
 -- returns result, err, need_reload
 -- need_reload indicates if reloading schema could help

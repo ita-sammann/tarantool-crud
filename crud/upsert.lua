@@ -13,10 +13,11 @@ local UpsertError = errors.new_class('UpsertError', { capture_stack = false})
 
 local upsert = {}
 
-local UPSERT_FUNC_NAME = 'upsert_on_storage'
+local UPSERT_FUNC_NAME = 'upsert_on_storage_v2'
+local UPSERT_LEGACY_FUNC_NAME = 'upsert_on_storage'
 local CRUD_UPSERT_FUNC_NAME = utils.get_storage_call(UPSERT_FUNC_NAME)
 
-local function upsert_on_storage(space_name, tuple, operations, opts)
+local function upsert_on_storage_v2(space_name, tuple, operations, opts)
     dev_checks('string', 'table', 'table', {
         add_space_schema_hash = '?boolean',
         fields = '?table',
@@ -64,7 +65,45 @@ local function upsert_on_storage(space_name, tuple, operations, opts)
     return result
 end
 
-upsert.storage_api = {[UPSERT_FUNC_NAME] = upsert_on_storage}
+local function upsert_on_storage(space_name, tuple, operations, opts)
+    dev_checks('string', 'table', 'table', {
+        add_space_schema_hash = '?boolean',
+        fields = '?table',
+        sharding_key_hash = '?number',
+        sharding_func_hash = '?number',
+        skip_sharding_hash_check = '?boolean',
+        fetch_latest_metadata = '?boolean',
+    })
+
+    opts = opts or {}
+
+    local space = box.space[space_name]
+    if space == nil then
+        return nil, UpsertError:new("Space %q doesn't exist", space_name)
+    end
+
+    local _, err = sharding.check_sharding_hash(space_name,
+            opts.sharding_func_hash,
+            opts.sharding_key_hash,
+            opts.skip_sharding_hash_check)
+
+    if err ~= nil then
+        return nil, err
+    end
+
+    -- add_space_schema_hash is true only in case of upsert_object
+    -- the only one case when reloading schema can avoid insert error
+    -- is flattening object on router
+    return schema.wrap_func_result(space, space.upsert, {
+        add_space_schema_hash = opts.add_space_schema_hash,
+        fetch_latest_metadata = opts.fetch_latest_metadata,
+    }, space, tuple, operations)
+end
+
+upsert.storage_api = {
+    [UPSERT_FUNC_NAME] = upsert_on_storage_v2,
+    [UPSERT_LEGACY_FUNC_NAME] = upsert_on_storage,
+}
 
 -- returns result, err, need_reload
 -- need_reload indicates if reloading schema could help
