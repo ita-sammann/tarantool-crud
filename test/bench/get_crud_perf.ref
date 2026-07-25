@@ -1,0 +1,27 @@
+Performance counter stats for 'tarantool test/bench/get_crud_perf.lua':
+
+    7 315 615 028      task-clock                       #    0.999 CPUs utilized
+              126      context-switches                 #   17.223 /sec
+               17      cpu-migrations                   #    2.324 /sec
+          206 158      page-faults                      #   28.181 K/sec
+   30 685 282 923      cpu_atom/instructions/           #    1.32  insn per cycle              (0.18%)
+   82 856 607 359      cpu_core/instructions/           #    2.44  insn per cycle              (99.86%)
+   23 184 225 732      cpu_atom/cycles/                 #    3.169 GHz                         (0.18%)
+   33 949 937 413      cpu_core/cycles/                 #    4.641 GHz                         (99.86%)
+    6 418 272 012      cpu_atom/branches/               #  877.339 M/sec                       (0.18%)
+   16 261 964 035      cpu_core/branches/               #    2.223 G/sec                       (99.86%)
+       89 275 161      cpu_atom/branch-misses/          #    1.39% of all branches             (0.18%)
+      100 378 285      cpu_core/branch-misses/          #    0.62% of all branches             (99.86%)
+                                                        #     48.6 %  tma_backend_bound        (0.18%)
+                                                        #     33.5 %  tma_backend_bound
+                                                        #     10.6 %  tma_bad_speculation
+                                                        #     18.2 %  tma_frontend_bound
+                                                        #     37.7 %  tma_retiring             (99.86%)
+                                                        #     23.9 %  tma_retiring             (0.18%)
+                                                        #     11.0 %  tma_bad_speculation
+                                                        #     16.5 %  tma_frontend_bound       (0.18%)
+
+      7.324697227 seconds time elapsed
+
+      7.092227000 seconds user
+      0.226830000 seconds sys
